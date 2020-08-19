@@ -133,7 +133,7 @@ int myarchive_read_open_filename(void *a,const char *name,int siz){
 	}
 }
 
-static void* load(HMODULE h,const char *pathname,const char* funcname){
+static void* load(HMODULE h,long long ident,const char* funcname){
 	void *p = GetProcAddress(h,funcname);
 	//fprintf(stderr,"%s %016llx\n",funcname,p);
 	if(!p)return NULL;
@@ -142,8 +142,9 @@ static void* load(HMODULE h,const char *pathname,const char* funcname){
 	// if the address is not from expected module, it needs to be ignored.
 	Dl_info dlinfo;
 	dladdr(p, &dlinfo);
-	//fprintf(stderr,"%s\n",dlinfo.dli_fname);
-	if(strcmp(pathname,dlinfo.dli_fname))return NULL;
+	struct stat st;
+	stat(dlinfo.dli_fname, &st);
+	if(ident != st.st_ino)return NULL;
 #endif
 	return p;
 }
@@ -156,76 +157,85 @@ static HMODULE chk(const char *name){
 	HMODULE h=LoadLibraryA(name);
 	if(!h)return NULL;
 
-	char pathname[768];
-	GetModuleFileNameA(h,pathname,768);
-
-	parchive_version_number=(func_i)load(h,pathname,"archive_version_number");
+	parchive_version_number=(func_i)GetProcAddress(h,"archive_version_number");
 	if(!parchive_version_number){
 		FreeLibrary(h);
 		return NULL;
 	}
-	parchive_format=(func_ip)load(h,pathname,"archive_format");
-	parchive_format_name=(func_Cp)load(h,pathname,"archive_format_name");
-	parchive_filter_code=(func_ipi)load(h,pathname,"archive_filter_code"); // optional
-	parchive_filter_name=(func_Cpi)load(h,pathname,"archive_filter_name"); // optional
-	parchive_compression=(func_ip)load(h,pathname,"archive_compression"); // optional
-	parchive_compression_name=(func_Cp)load(h,pathname,"archive_compression_name"); // optional
-	parchive_error_string=(func_Cp)load(h,pathname,"archive_error_string");
-	parchive_clear_error=(func_vp)load(h,pathname,"archive_clear_error");
 
-	parchive_read_new=(func_p)load(h,pathname,"archive_read_new");
-	parchive_read_free=(func_ip)load(h,pathname,parchive_version_number()>=3000000 ? "archive_read_free" : "archive_read_finish");
-	parchive_read_close=(func_ip)load(h,pathname,"archive_read_close");
-	parchive_read_open=(func_ippppp)load(h,pathname,"archive_read_open");
-	parchive_read_support_format_all=(func_ip)load(h,pathname,"archive_read_support_format_all");
-	parchive_read_support_filter_all=(func_ip)load(h,pathname,parchive_version_number()>=3000000 ? "archive_read_support_filter_all" : "archive_read_support_compression_all");
-	parchive_read_open_filename=(func_ipCi)load(h,pathname,"archive_read_open_filename");
-	parchive_read_next_header=(func_ipP)load(h,pathname,"archive_read_next_header");
-	parchive_read_data_block=(func_ipPSL)load(h,pathname,"archive_read_data_block");
-	parchive_read_add_passphrase=(func_ipC)load(h,pathname,"archive_read_add_passphrase"); // optional, cf https://github.com/libarchive/libarchive/commit/6c222e59f461bf61962c7de318f946147f58d29b
+	char pathname[768];
+#if 0
+//defined(DL_ANDROID)
+	GetModuleFileNameA(parchive_version_number,pathname,768);
+#else
+	GetModuleFileNameA(h,pathname,768);
+#endif
+	struct stat st;
+	stat(pathname, &st);
+	long long ident = st.st_ino;
 
-	parchive_write_new=(func_p)load(h,pathname,"archive_write_new");
-	parchive_write_free=(func_ip)load(h,pathname,parchive_version_number()>=3000000 ? "archive_write_free" : "archive_write_finish");
-	parchive_write_disk_new=(func_p)load(h,pathname,"archive_write_disk_new");
-	parchive_write_finish_entry=(func_ip)load(h,pathname,"archive_write_finish_entry");
-	parchive_write_close=(func_ip)load(h,pathname,"archive_write_close");
-	parchive_write_open=(func_ippppp)load(h,pathname,"archive_write_open");
-	parchive_write_open_filename=(func_ipC)load(h,pathname,"archive_write_open_filename"); // optional cmake does not support
-	parchive_write_disk_set_standard_lookup=(func_ip)load(h,pathname,"archive_write_disk_set_standard_lookup"); // optional cmake does not support
-	parchive_write_data=(func_ipps)load(h,pathname,"archive_write_data");
-	parchive_write_data_block=(func_ippsl)load(h,pathname,"archive_write_data_block");
-	parchive_write_set_format_by_name=(func_ipC)load(h,pathname,"archive_write_set_format_by_name");
-	parchive_write_disk_set_options=(func_ipi)load(h,pathname,"archive_write_disk_set_options");
-	parchive_write_set_bytes_in_last_block=(func_ipi)load(h,pathname,"archive_write_set_bytes_in_last_block");
-	parchive_write_header=(func_ipp)load(h,pathname,"archive_write_header");
-	parchive_write_set_passphrase=(func_ipC)load(h,pathname,"archive_write_set_passphrase"); // optional, cf https://github.com/libarchive/libarchive/commit/6c222e59f461bf61962c7de318f946147f58d29b
-	parchive_write_add_filter_none=(func_ip)load(h,pathname,"archive_write_add_filter_none"); // optional
-	parchive_write_set_compression_none=(func_ip)load(h,pathname,"archive_write_set_compression_none"); // optional
-	parchive_write_add_filter_by_name=(func_ipC)load(h,pathname,"archive_write_add_filter_by_name"); // optional cmake does not support
-	parchive_write_set_filter_option=(func_ipCCC)load(h,pathname,"archive_write_set_filter_option"); // optional
-	parchive_write_set_format_option=(func_ipCCC)load(h,pathname,"archive_write_set_format_option"); // optional, cf https://github.com/libarchive/libarchive/commit/11e7a909f561bc62272d6c512bfcf1f599036fcb
+	parchive_format=(func_ip)load(h,ident,"archive_format");
+	parchive_format_name=(func_Cp)load(h,ident,"archive_format_name");
+	parchive_filter_code=(func_ipi)load(h,ident,"archive_filter_code"); // optional
+	parchive_filter_name=(func_Cpi)load(h,ident,"archive_filter_name"); // optional
+	parchive_compression=(func_ip)load(h,ident,"archive_compression"); // optional
+	parchive_compression_name=(func_Cp)load(h,ident,"archive_compression_name"); // optional
+	parchive_error_string=(func_Cp)load(h,ident,"archive_error_string");
+	parchive_clear_error=(func_vp)load(h,ident,"archive_clear_error");
 
-	parchive_entry_new=(func_p)load(h,pathname,"archive_entry_new");
-	parchive_entry_clear=(func_ip)load(h,pathname,"archive_entry_clear");
-	parchive_entry_free=(func_ip)load(h,pathname,"archive_entry_free");
-	parchive_entry_copy_stat=(func_vpT)load(h,pathname,"archive_entry_copy_stat");
-	parchive_entry_pathname=(func_Cp)load(h,pathname,"archive_entry_pathname");
-	parchive_entry_strmode=(func_Cp)load(h,pathname,"archive_entry_strmode");
-	parchive_entry_size=(func_lp)load(h,pathname,"archive_entry_size");
-	parchive_entry_filetype=(func_ip)load(h,pathname,"archive_entry_filetype");
-	parchive_entry_perm=(func_ip)load(h,pathname,"archive_entry_perm"); // optional, cf https://github.com/libarchive/libarchive/commit/50f8302a14f0c3b8225e93ebc5007db1a7b6841c
-	parchive_entry_mode=(func_ip)load(h,pathname,"archive_entry_mode");
-	parchive_entry_mtime=(func_tp)load(h,pathname,"archive_entry_mtime");
-	parchive_entry_atime=(func_tp)load(h,pathname,"archive_entry_atime");
-	parchive_entry_ctime=(func_tp)load(h,pathname,"archive_entry_ctime");
-	parchive_entry_set_pathname=(func_vpC)load(h,pathname,"archive_entry_set_pathname");
-	parchive_entry_set_size=(func_vpl)load(h,pathname,"archive_entry_set_size");
-	parchive_entry_set_filetype=(func_vpi)load(h,pathname,"archive_entry_set_filetype");
-	parchive_entry_set_perm=(func_vpi)load(h,pathname,"archive_entry_set_perm");
-	parchive_entry_set_mode=(func_vpi)load(h,pathname,"archive_entry_set_mode");
-	parchive_entry_set_mtime=(func_vptl)load(h,pathname,"archive_entry_set_mtime");
-	parchive_entry_set_atime=(func_vptl)load(h,pathname,"archive_entry_set_atime");
-	parchive_entry_set_ctime=(func_vptl)load(h,pathname,"archive_entry_set_ctime");
+	parchive_read_new=(func_p)load(h,ident,"archive_read_new");
+	parchive_read_free=(func_ip)load(h,ident,parchive_version_number()>=3000000 ? "archive_read_free" : "archive_read_finish");
+	parchive_read_close=(func_ip)load(h,ident,"archive_read_close");
+	parchive_read_open=(func_ippppp)load(h,ident,"archive_read_open");
+	parchive_read_support_format_all=(func_ip)load(h,ident,"archive_read_support_format_all");
+	parchive_read_support_filter_all=(func_ip)load(h,ident,parchive_version_number()>=3000000 ? "archive_read_support_filter_all" : "archive_read_support_compression_all");
+	parchive_read_open_filename=(func_ipCi)load(h,ident,"archive_read_open_filename");
+	parchive_read_next_header=(func_ipP)load(h,ident,"archive_read_next_header");
+	parchive_read_data_block=(func_ipPSL)load(h,ident,"archive_read_data_block");
+	parchive_read_add_passphrase=(func_ipC)load(h,ident,"archive_read_add_passphrase"); // optional, cf https://github.com/libarchive/libarchive/commit/6c222e59f461bf61962c7de318f946147f58d29b
+
+	parchive_write_new=(func_p)load(h,ident,"archive_write_new");
+	parchive_write_free=(func_ip)load(h,ident,parchive_version_number()>=3000000 ? "archive_write_free" : "archive_write_finish");
+	parchive_write_disk_new=(func_p)load(h,ident,"archive_write_disk_new");
+	parchive_write_finish_entry=(func_ip)load(h,ident,"archive_write_finish_entry");
+	parchive_write_close=(func_ip)load(h,ident,"archive_write_close");
+	parchive_write_open=(func_ippppp)load(h,ident,"archive_write_open");
+	parchive_write_open_filename=(func_ipC)load(h,ident,"archive_write_open_filename"); // optional cmake does not support
+	parchive_write_disk_set_standard_lookup=(func_ip)load(h,ident,"archive_write_disk_set_standard_lookup"); // optional cmake does not support
+	parchive_write_data=(func_ipps)load(h,ident,"archive_write_data");
+	parchive_write_data_block=(func_ippsl)load(h,ident,"archive_write_data_block");
+	parchive_write_set_format_by_name=(func_ipC)load(h,ident,"archive_write_set_format_by_name");
+	parchive_write_disk_set_options=(func_ipi)load(h,ident,"archive_write_disk_set_options");
+	parchive_write_set_bytes_in_last_block=(func_ipi)load(h,ident,"archive_write_set_bytes_in_last_block");
+	parchive_write_header=(func_ipp)load(h,ident,"archive_write_header");
+	parchive_write_set_passphrase=(func_ipC)load(h,ident,"archive_write_set_passphrase"); // optional, cf https://github.com/libarchive/libarchive/commit/6c222e59f461bf61962c7de318f946147f58d29b
+	parchive_write_add_filter_none=(func_ip)load(h,ident,"archive_write_add_filter_none"); // optional
+	parchive_write_set_compression_none=(func_ip)load(h,ident,"archive_write_set_compression_none"); // optional
+	parchive_write_add_filter_by_name=(func_ipC)load(h,ident,"archive_write_add_filter_by_name"); // optional cmake does not support
+	parchive_write_set_filter_option=(func_ipCCC)load(h,ident,"archive_write_set_filter_option"); // optional
+	parchive_write_set_format_option=(func_ipCCC)load(h,ident,"archive_write_set_format_option"); // optional, cf https://github.com/libarchive/libarchive/commit/11e7a909f561bc62272d6c512bfcf1f599036fcb
+
+	parchive_entry_new=(func_p)load(h,ident,"archive_entry_new");
+	parchive_entry_clear=(func_ip)load(h,ident,"archive_entry_clear");
+	parchive_entry_free=(func_ip)load(h,ident,"archive_entry_free");
+	parchive_entry_copy_stat=(func_vpT)load(h,ident,"archive_entry_copy_stat");
+	parchive_entry_pathname=(func_Cp)load(h,ident,"archive_entry_pathname");
+	parchive_entry_strmode=(func_Cp)load(h,ident,"archive_entry_strmode");
+	parchive_entry_size=(func_lp)load(h,ident,"archive_entry_size");
+	parchive_entry_filetype=(func_ip)load(h,ident,"archive_entry_filetype");
+	parchive_entry_perm=(func_ip)load(h,ident,"archive_entry_perm"); // optional, cf https://github.com/libarchive/libarchive/commit/50f8302a14f0c3b8225e93ebc5007db1a7b6841c
+	parchive_entry_mode=(func_ip)load(h,ident,"archive_entry_mode");
+	parchive_entry_mtime=(func_tp)load(h,ident,"archive_entry_mtime");
+	parchive_entry_atime=(func_tp)load(h,ident,"archive_entry_atime");
+	parchive_entry_ctime=(func_tp)load(h,ident,"archive_entry_ctime");
+	parchive_entry_set_pathname=(func_vpC)load(h,ident,"archive_entry_set_pathname");
+	parchive_entry_set_size=(func_vpl)load(h,ident,"archive_entry_set_size");
+	parchive_entry_set_filetype=(func_vpi)load(h,ident,"archive_entry_set_filetype");
+	parchive_entry_set_perm=(func_vpi)load(h,ident,"archive_entry_set_perm");
+	parchive_entry_set_mode=(func_vpi)load(h,ident,"archive_entry_set_mode");
+	parchive_entry_set_mtime=(func_vptl)load(h,ident,"archive_entry_set_mtime");
+	parchive_entry_set_atime=(func_vptl)load(h,ident,"archive_entry_set_atime");
+	parchive_entry_set_ctime=(func_vptl)load(h,ident,"archive_entry_set_ctime");
 
 	//fprintf(stderr,"%016llx\n",parchive_write_open_filename);
 	
@@ -234,7 +244,7 @@ static HMODULE chk(const char *name){
 		return NULL;
 	}
 
-	fprintf(stderr,"libarchive implementation: %s\n",pathname);
+	fprintf(stderr,"libarchive implementation: %s (ver. %d)\n",pathname,parchive_version_number());
 	return h;
 #endif
 }
@@ -247,7 +257,8 @@ int openLibArchive(){
 #if defined(_WIN32) || (!defined(__GNUC__) && !defined(__clang__))
 	if(!hlibarc)hlibarc=chk("libarchive-13.dll");
 	if(!hlibarc)hlibarc=chk("libarchive.dll");
-	if(!hlibarc)hlibarc=chk("C:\\windows\\system32\\archiveint.dll");
+	if(!hlibarc)hlibarc=chk("C:\\windows\\system32\\archiveint.dll"); // Win64 system version does not suppport lzma :(
+	// if(!hlibarc)hlibarc=chk("C:\\windows\\syswow64\\archiveint.dll"); // Win32 system version seems to use stdcall, which is not compatible.
 #else
 	//user libarchive
 	if(!hlibarc)hlibarc=chk("/usr/local/opt/libarchive/lib/libarchive.dylib"); //Homebrew
@@ -264,10 +275,11 @@ int openLibArchive(){
 	}
 	//user cmake
 	//for very fun, you can use cmake as libarchive.so!
-	//but non-macOS needs cmake configured with "-DCMAKE_EXE_LINKER_FLAGS:STRING=-Wl,-E" ...
+	//but non-macOS needs cmake configured with "-DCMAKE_C_FLAGS:STRING=-fPIE -DCMAKE_CXX_FLAGS:STRING=-fPIE -DCMAKE_EXE_LINKER_FLAGS:STRING='-pie -rdynamic'" ...
 	//don't worry, we will not load wrong cmake.
 	//also, some symbols are not exported (stripped by ld as unused symbol). miniarc can handle it.
 	//bonus: try "nm -add-dyldinfo `which cmake`" on macOS.
+	//note: this WILL not be possible on glibc>=2.30 cf https://stackoverflow.com/questions/59074126/loading-executable-or-executing-a-library
 	if(!hlibarc)hlibarc=chk("/Applications/CMake.app/Contents/bin/cmake");
 	if(!hlibarc)hlibarc=chk("/usr/local/opt/cmake/bin/cmake"); //Homebrew
 	if(!hlibarc)hlibarc=chk("/opt/local/bin/cmake"); //MacPorts
