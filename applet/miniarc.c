@@ -77,7 +77,7 @@ static int extract(const char *password,const char *arc, const char *dir, int ar
 			int comptype = myarchive_compression(a);
 			const char* s_comptype = myarchive_compression_name(a);
 			fprintf(stderr,"arctype = %s (0x%x) .\n",s_arctype,arctype);
-			fprintf(stderr,"comptype = %s (0x%x) .\n",s_comptype,comptype);
+			fprintf(stderr,"filtertype = %s (0x%x) .\n",s_comptype,comptype);
 			fprintf(stderr,"\n");
 		}
 		if(status == ARCHIVE_EOF){
@@ -144,7 +144,7 @@ static int list(const char *password,const char *arc, int argc, const char **arg
 			int comptype = myarchive_compression(a);
 			const char* s_comptype = myarchive_compression_name(a);
 			printf("arctype = %s (0x%x) .\n",s_arctype,arctype);
-			printf("comptype = %s (0x%x) .\n",s_comptype,comptype);
+			printf("filtertype = %s (0x%x) .\n",s_comptype,comptype);
 			printf("\n");
 			printf("Size       Time                Name              \n");
 			printf("---------- ------------------- --------------------\n");
@@ -202,7 +202,16 @@ static int add(const char *password,const char* arctype,/*int level,*/const char
 		parchive_entry_clear(entry);
 		struct stat st;
 		stat(argv[i],&st);
+#if defined(_WIN32) || (!defined(__GNUC__) && !defined(__clang__))
+		// there are quite many CRT dialects and passing struct stat to 3rdparty library could be unstable.
+		parchive_entry_set_size(entry,st.st_size);
+		parchive_entry_set_mtime(entry,st.st_mtime,0);
+		parchive_entry_set_ctime(entry,st.st_ctime,0);
+		parchive_entry_set_atime(entry,st.st_atime,0);
+		parchive_entry_set_mode(entry,st.st_mode); // seems required as not defaulting to S_IFREG.
+#else
 		parchive_entry_copy_stat(entry,&st);
+#endif
 		parchive_entry_set_pathname(entry,argv[i]);
 		status = parchive_write_header(a,entry);
 		if(status < ARCHIVE_OK){
