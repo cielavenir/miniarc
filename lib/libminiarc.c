@@ -254,6 +254,7 @@ int openLibArchive(){
 
 	hlibarc=NULL;
 #ifndef NODLOPEN
+	//if(!hlibarc && getenv("MINIARC_IMPL"))hlibarc=chk(getenv("MINIARC_IMPL"));
 #if defined(_WIN32) || (!defined(__GNUC__) && !defined(__clang__))
 	if(!hlibarc)hlibarc=chk("libarchive-13.dll");
 	if(!hlibarc)hlibarc=chk("libarchive.dll");
@@ -368,6 +369,11 @@ static bool _aliveLibArchive(HMODULE h){
 }
 
 bool aliveLibArchive(){return _aliveLibArchive(hlibarc);}
+
+int getLibArchiveFileName(char* path, int siz){
+	if(!aliveLibArchive())return 0;
+	return GetModuleFileNameA(hlibarc,path,siz);
+}
 
 int closeLibArchive(){
 	if(!aliveLibArchive())return 1;

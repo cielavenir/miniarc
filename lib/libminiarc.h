@@ -124,6 +124,7 @@ EXTERN func_vptl parchive_entry_set_mtime, parchive_entry_set_atime, parchive_en
 
 int openLibArchive();
 bool aliveLibArchive();
+int getLibArchiveFileName(char* path, int siz);
 int closeLibArchive();
 const char* myarchive_compression_name(void *a);
 int myarchive_compression(void *a);
