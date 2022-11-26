@@ -176,13 +176,6 @@ static int list(const char *password,const char *arc, int argc, const char **arg
 static int add(const char *password,const char* arctype,/*int level,*/const char *arc, int argc, const char **argv){
 	if(openLibArchive())return 1;
 	void *a = parchive_write_new();
-	if(password&&*password){
-		if(parchive_write_set_passphrase){
-			parchive_write_set_passphrase(a,password);
-		}else{
-			fprintf(stderr,"[warn] password is not supported on this version of libarchive\n");
-		}
-	}
 	int status;
 	//status = parchive_write_set_compression_none(a);
 	//status = parchive_write_add_filter_none(a);
@@ -190,6 +183,14 @@ static int add(const char *password,const char* arctype,/*int level,*/const char
 	if(status < ARCHIVE_OK){
 		fprintf(stderr,"%s\n",parchive_error_string(a));
 		return 0;
+	}
+	if(password&&*password){
+		if(parchive_write_set_passphrase && parchive_write_set_format_option){
+			parchive_write_set_passphrase(a,password);
+			parchive_write_set_format_option(a,"zip","encryption","1");
+		}else{
+			fprintf(stderr,"[warn] password is not supported on this version of libarchive\n");
+		}
 	}
 	status = myarchive_write_open_filename(a, arc);
 	if(status < ARCHIVE_OK){
